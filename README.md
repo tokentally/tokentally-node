@@ -86,6 +86,24 @@ const message = await tt.withTracking(
 );
 ```
 
+## Prompt Caching
+
+Cache reads bill at a reduced rate, so report them separately — otherwise
+cached tokens are priced as full-rate input:
+
+```typescript
+await tt.track({
+  tokens_in: message.usage.input_tokens,
+  tokens_out: message.usage.output_tokens,
+  cache_read_input_tokens: message.usage.cache_read_input_tokens ?? 0,
+  cache_creation_input_tokens: message.usage.cache_creation_input_tokens ?? 0,
+  model: message.model,
+});
+```
+
+`withTracking` and `ctx.setUsage(...)` accept the same fields; `withTracking`
+picks them up automatically from Anthropic-shaped responses.
+
 ## Configuration
 
 ```typescript
