@@ -1,6 +1,6 @@
 {
   "name": "tokentally-node",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Track AI API usage with TokenTally",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",

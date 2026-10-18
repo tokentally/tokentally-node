@@ -122,12 +122,66 @@ describe('TokenTally', () => {
     });
   });
 
+  describe('cache and extended fields (Python 0.4.0 parity)', () => {
+    it('sends cache token fields when positive', async () => {
+      const fn = mockFetch(200, OK_RESPONSE);
+      await tt.track({
+        tokens_in: 100,
+        tokens_out: 50,
+        model: 'claude-sonnet-5',
+        cache_read_input_tokens: 1396,
+        cache_creation_input_tokens: 20,
+        cost_usd: 0.0021,
+      });
+      expect(lastPayload(fn)).toMatchObject({
+        cache_read_input_tokens: 1396,
+        cache_creation_input_tokens: 20,
+        cost_usd: 0.0021,
+      });
+    });
+
+    it('omits cache fields when zero or absent, like the Python serializer', async () => {
+      const fn = mockFetch(200, OK_RESPONSE);
+      await tt.track({ tokens_in: 1, tokens_out: 1, model: 'm', cache_read_input_tokens: 0 });
+      const payload = lastPayload(fn);
+      expect(payload).not.toHaveProperty('cache_read_input_tokens');
+      expect(payload).not.toHaveProperty('cache_creation_input_tokens');
+    });
+
+    it('passes image-generation fields through', async () => {
+      const fn = mockFetch(200, OK_RESPONSE);
+      await tt.track({ model: 'leonardo-phoenix', provider: 'leonardo', credits: 12, resolution: '1024x1024', quality: 'high' });
+      expect(lastPayload(fn)).toMatchObject({
+        tokens_in: 0,
+        tokens_out: 0,
+        credits: 12,
+        resolution: '1024x1024',
+        quality: 'high',
+      });
+    });
+
+    it('carries cache fields through setUsage', async () => {
+      const fn = mockFetch(200, OK_RESPONSE);
+      await tt.trackUsage({ model: 'claude-sonnet-5' }, async (ctx) => {
+        ctx.setUsage({
+          tokens_in: 10,
+          tokens_out: 20,
+          cache_read_input_tokens: 500,
+          cache_creation_input_tokens: 0,
+        });
+      });
+      const payload = lastPayload(fn);
+      expect(payload).toMatchObject({ cache_read_input_tokens: 500 });
+      expect(payload).not.toHaveProperty('cache_creation_input_tokens');
+    });
+  });
+
   describe('withTracking', () => {
     it('extracts usage from the result like the Ruby SDK', async () => {
       const fn = mockFetch(200, OK_RESPONSE);
 
       const result = await tt.withTracking({ model: 'claude-sonnet-5' }, async () => ({
-        usage: { input_tokens: 5, output_tokens: 7 },
+        usage: { input_tokens: 5, output_tokens: 7, cache_read_input_tokens: 1396 },
         stop_reason: 'end_turn',
       }));
 
@@ -135,6 +189,7 @@ describe('TokenTally', () => {
       expect(lastPayload(fn)).toMatchObject({
         tokens_in: 5,
         tokens_out: 7,
+        cache_read_input_tokens: 1396,
         model: 'claude-sonnet-5',
         stop_reason: 'end_turn',
       });

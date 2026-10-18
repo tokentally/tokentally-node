@@ -4,10 +4,22 @@
  */
 
 export interface UsageData {
-  tokens_in: number;
-  tokens_out: number;
+  tokens_in?: number;
+  tokens_out?: number;
   model: string;
   provider?: string;
+  /** Actual cost from the LLM response, overriding server-side pricing. */
+  cost_usd?: number;
+  /** Tokens read from prompt cache (billed at a reduced rate). */
+  cache_read_input_tokens?: number;
+  /** Tokens written to prompt cache. */
+  cache_creation_input_tokens?: number;
+  /** Credits used (for image generation APIs like Leonardo). */
+  credits?: number;
+  /** Image resolution (e.g., '1024x1024'). */
+  resolution?: string;
+  /** Image quality (e.g., 'standard', 'hd'). */
+  quality?: string;
   runtime_ms?: number;
   stop_reason?: string;
   error_message?: string;
@@ -63,7 +75,12 @@ export class ValidationError extends TokenTallyError {
 
 /** Shape of AI provider responses that withTracking can extract usage from. */
 export interface TrackableResult {
-  usage?: { input_tokens: number; output_tokens: number };
+  usage?: {
+    input_tokens: number;
+    output_tokens: number;
+    cache_read_input_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+  };
   stop_reason?: string | null;
 }
 
@@ -121,10 +138,20 @@ export class TokenTally {
   async track(data: UsageData): Promise<UsageResponse> {
     const payload: UsageData = {
       ...data,
+      tokens_in: data.tokens_in ?? 0,
+      tokens_out: data.tokens_out ?? 0,
       provider: data.provider || 'anthropic',
       metadata: data.metadata || {},
       timestamp: data.timestamp || new Date().toISOString(),
     };
+
+    // Match the Python SDK's serializer: cache fields are sent only when positive
+    if (!payload.cache_read_input_tokens) {
+      delete payload.cache_read_input_tokens;
+    }
+    if (!payload.cache_creation_input_tokens) {
+      delete payload.cache_creation_input_tokens;
+    }
 
     return this.sendUsage(payload);
   }
@@ -205,6 +232,8 @@ export class TokenTally {
       await this.track({
         tokens_in: result.usage.input_tokens,
         tokens_out: result.usage.output_tokens,
+        cache_read_input_tokens: result.usage.cache_read_input_tokens ?? undefined,
+        cache_creation_input_tokens: result.usage.cache_creation_input_tokens ?? undefined,
         model: options.model,
         provider: options.provider || 'anthropic',
         runtime_ms,
@@ -227,7 +256,7 @@ export class TokenTally {
         headers: {
           'Content-Type': 'application/json',
           'X-API-Key': this.apiKey,
-          'User-Agent': 'tokentally-node/0.2.0',
+          'User-Agent': 'tokentally-node/0.3.0',
         },
         body: JSON.stringify(payload),
         signal: controller.signal,
@@ -286,6 +315,12 @@ export class UsageContext {
   tokens_in: number | null = null;
   tokens_out: number | null = null;
   stop_reason: string | null = null;
+  cost_usd: number | null = null;
+  cache_read_input_tokens = 0;
+  cache_creation_input_tokens = 0;
+  credits: number | null = null;
+  resolution: string | null = null;
+  quality: string | null = null;
   error_message: string | null = null;
   runtime_ms: number | null = null;
 
@@ -304,11 +339,27 @@ export class UsageContext {
     this.metadata = metadata;
   }
 
-  /** Set usage data from the provider's API response. */
-  setUsage(usage: { tokens_in: number; tokens_out: number; stop_reason?: string | null }): void {
-    this.tokens_in = usage.tokens_in;
-    this.tokens_out = usage.tokens_out;
+  /** Set usage data from the provider's API response. Mirrors Python's set_usage. */
+  setUsage(usage: {
+    tokens_in?: number;
+    tokens_out?: number;
+    stop_reason?: string | null;
+    cost_usd?: number | null;
+    cache_read_input_tokens?: number | null;
+    cache_creation_input_tokens?: number | null;
+    credits?: number | null;
+    resolution?: string | null;
+    quality?: string | null;
+  }): void {
+    this.tokens_in = usage.tokens_in ?? 0;
+    this.tokens_out = usage.tokens_out ?? 0;
     this.stop_reason = usage.stop_reason ?? null;
+    this.cost_usd = usage.cost_usd ?? null;
+    this.cache_read_input_tokens = usage.cache_read_input_tokens ?? 0;
+    this.cache_creation_input_tokens = usage.cache_creation_input_tokens ?? 0;
+    this.credits = usage.credits ?? null;
+    this.resolution = usage.resolution ?? null;
+    this.quality = usage.quality ?? null;
   }
 
   /** The usage response, available after the scope exits. */
@@ -322,17 +373,28 @@ export class UsageContext {
       return;
     }
 
-    this._response = await this.client._sendUsage({
+    const payload: UsageData = {
       tokens_in: this.tokens_in,
       tokens_out: this.tokens_out,
       model: this.model,
       provider: this.provider,
+      cost_usd: this.cost_usd ?? undefined,
+      credits: this.credits ?? undefined,
+      resolution: this.resolution ?? undefined,
+      quality: this.quality ?? undefined,
       runtime_ms: this.runtime_ms ?? undefined,
       stop_reason: this.stop_reason ?? undefined,
       error_message: this.error_message ?? undefined,
       metadata: this.metadata,
       timestamp: new Date().toISOString(),
-    });
+    };
+    if (this.cache_read_input_tokens > 0) {
+      payload.cache_read_input_tokens = this.cache_read_input_tokens;
+    }
+    if (this.cache_creation_input_tokens > 0) {
+      payload.cache_creation_input_tokens = this.cache_creation_input_tokens;
+    }
+    this._response = await this.client._sendUsage(payload);
   }
 }
 
