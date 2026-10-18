@@ -1,6 +1,8 @@
 # TokenTally TypeScript SDK
 
-Track your AI API usage with TokenTally. Get real-time analytics, cost tracking, and usage insights for Claude, OpenAI, and other AI providers.
+The official TypeScript SDK for [TokenTally](https://tokentally.cloud) — an AI usage analytics platform that tracks your API usage and costs across Claude, OpenAI, and other AI providers, with real-time dashboards and usage insights.
+
+Sign up and get your API key at **[tokentally.cloud](https://tokentally.cloud)** (Settings → API Keys).
 
 Written in TypeScript with full type definitions; works from Node.js 18+ (JavaScript or TypeScript).
 
@@ -128,6 +130,12 @@ try {
   `track_usage` context manager).
 - `withTracking(model, provider, metadata, fn)` is now
   `withTracking({ model, provider, metadata }, fn)`.
+
+## Links
+
+- Website & dashboard: [tokentally.cloud](https://tokentally.cloud)
+- Python SDK: [tokentally/tokentally-python](https://github.com/tokentally/tokentally-python)
+- Ruby SDK: [tokentally/tokentally-ruby](https://github.com/tokentally/tokentally-ruby)
 
 ## License
 
